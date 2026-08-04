@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+import os
+from datetime import date
+from typing import List
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from datetime import date
-from typing import List
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 app = FastAPI()
 
@@ -16,13 +18,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+def get_db_connection():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL saknas! Appen är inte kopplad till PostgreSQL.")
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    return conn
+
 # Skapa databastabell om den inte finns
 def init_db():
-    conn = sqlite3.connect("frys.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS varor (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             namn TEXT NOT NULL,
             kategori TEXT NOT NULL,
             mangd TEXT NOT NULL,
@@ -42,35 +52,31 @@ class NyVara(BaseModel):
 
 @app.get("/varor")
 def hamta_varor():
-    conn = sqlite3.connect("frys.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, namn, kategori, mangd, datum FROM varor ORDER BY datum DESC")
     rader = cursor.fetchall()
     conn.close()
-    
-    return [
-        {"id": r[0], "namn": r[1], "kategori": r[2], "mangd": r[3], "datum": r[4]}
-        for r in rader
-    ]
+    return [dict(r) for r in rader]
 
 @app.post("/varor")
 def lagg_till_vara(vara: NyVara):
-    conn = sqlite3.connect("frys.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO varor (namn, kategori, mangd, datum) VALUES (?, ?, ?, ?)",
+        "INSERT INTO varor (namn, kategori, mangd, datum) VALUES (%s, %s, %s, %s) RETURNING id",
         (vara.namn, vara.kategori, vara.mangd, str(vara.datum))
     )
+    nytt_id = cursor.fetchone()["id"]
     conn.commit()
-    nytt_id = cursor.lastrowid
     conn.close()
     return {"status": "ok", "id": nytt_id}
 
 @app.delete("/varor/{vara_id}")
 def ta_bort_vara(vara_id: int):
-    conn = sqlite3.connect("frys.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM varor WHERE id = ?", (vara_id,))
+    cursor.execute("DELETE FROM varor WHERE id = %s", (vara_id,))
     conn.commit()
     conn.close()
     return {"status": "borttagen", "id": vara_id}
