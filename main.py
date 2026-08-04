@@ -107,7 +107,7 @@ def slumpa_recept():
 
     try:
         response = ai_client.models.generate_content(
-            model='gemini-1.5-flash',
+            model='models/gemini-1.5-flash',
             contents=prompt,
         )
         return {"recept": response.text}
