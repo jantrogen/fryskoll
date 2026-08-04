@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from google import genai
 
 app = FastAPI()
 
@@ -19,6 +20,9 @@ app.add_middleware(
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Starta Gemini-klienten (hämtar GEMINI_API_KEY automatiskt från Render)
+ai_client = genai.Client()
 
 def get_db_connection():
     if not DATABASE_URL:
@@ -81,6 +85,35 @@ def ta_bort_vara(vara_id: int):
     conn.close()
     return {"status": "borttagen", "id": vara_id}
 
+@app.get("/recept")
+def slumpa_recept():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT namn, mangd FROM varor")
+    varor = cursor.fetchall()
+    conn.close()
+    
+    if not varor:
+        return {"recept": "Din frys är helt tom! Lägg till lite varor först så kan jag föreslå ett recept."}
+
+    varu_lista = ", ".join([f"{v['namn']} ({v['mangd']})" for v in varor])
+
+    prompt = (
+        f"Här är en lista på vad jag har i min frys just nu: {varu_lista}. "
+        "Föreslå ett gott och inspirerande middagsrecept baserat huvudsakligen på dessa ingredienser. "
+        "Skriv vad som används från frysen och ge en kort inköpslista på eventuella 1-3 basvaror som behövs till. "
+        "Svara på svenska med tydlig struktur (t.ex. rubriker och punktlistor)."
+    )
+
+    try:
+        response = ai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        return {"recept": response.text}
+    except Exception as e:
+        return {"recept": f"Kunde inte generera recept just nu. Fel: {str(e)}"}
+
 @app.get("/", response_class=HTMLResponse)
 def ladda_sida():
     return """
@@ -104,6 +137,8 @@ def ladda_sida():
             --card-bg: #ffffff;
             --primary: #2563eb;
             --primary-hover: #1d4ed8;
+            --ai-btn: #7c3aed;
+            --ai-btn-hover: #6d28d9;
             --text-main: #0f172a;
             --text-muted: #64748b;
             --border: #e2e8f0;
@@ -205,6 +240,38 @@ def ladda_sida():
         }
         .btn-add:hover { background-color: var(--primary-hover); }
 
+        .btn-ai {
+            width: 100%;
+            background-color: var(--ai-btn);
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-bottom: 24px;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-ai:hover { background-color: var(--ai-btn-hover); }
+
+        .ai-result-box {
+            background: #faf5ff;
+            border: 1px solid #e9d5ff;
+            padding: 16px;
+            border-radius: 14px;
+            margin-bottom: 24px;
+            white-space: pre-line;
+            line-height: 1.5;
+            font-size: 14px;
+            color: #3b0764;
+            display: none;
+        }
+
         .search-bar {
             margin-bottom: 16px;
         }
@@ -274,6 +341,9 @@ def ladda_sida():
         <div class="stats-badge"><span id="antal-varor">0</span> i frysen</div>
     </header>
 
+    <button class="btn-ai" onclick="hamtaRecept()">🤖 Föreslå middag med AI</button>
+    <div id="ai-result" class="ai-result-box"></div>
+
     <div class="card">
         <h2 class="card-title">＋ Lägg till ny vara</h2>
         <div class="form-grid">
@@ -331,6 +401,20 @@ def ladda_sida():
         if (diffMader < 2) return { text: 'Nyligen infryst', class: 'badge-farsk' };
         if (diffMader < 6) return { text: 'Okej ålder', class: 'badge-ok' };
         return { text: 'Ät snart!', class: 'badge-gammal' };
+    }
+
+    async function hamtaRecept() {
+        const box = document.getElementById('ai-result');
+        box.style.display = 'block';
+        box.innerHTML = '🍳 AI funderar ut ett gott recept baserat på din frys...';
+        
+        try {
+            const res = await fetch('/recept');
+            const data = await res.json();
+            box.innerHTML = `<strong>✨ Receptförslag:</strong><br><br>` + data.recept;
+        } catch (err) {
+            box.innerHTML = 'Kunde inte hämta recept just nu. Försök igen!';
+        }
     }
 
     async function laddaFrysen() {
