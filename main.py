@@ -107,7 +107,7 @@ def slumpa_recept():
 
     try:
         response = hf_client.chat_completion(
-            model="google/gemma-2-2b-it",
+            model="meta-llama/Llama-3.2-3B-Instruct",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=500,
             temperature=0.7
