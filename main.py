@@ -106,13 +106,14 @@ def slumpa_recept():
     )
 
     try:
-        response = hf_client.text_generation(
+        response = hf_client.chat_completion(
             model="google/gemma-2-2b-it",
-            prompt=prompt,
-            max_new_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=500,
             temperature=0.7
         )
-        return {"recept": response}
+        svar = response.choices[0].message.content
+        return {"recept": svar}
     except Exception as e:
         return {"recept": f"Kunde inte generera recept just nu. Fel: {str(e)}"}
 
