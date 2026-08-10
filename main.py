@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from google import genai
+from huggingface_hub import InferenceClient
 
 app = FastAPI()
 
@@ -21,8 +21,8 @@ app.add_middleware(
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Starta Gemini-klienten (hämtar GEMINI_API_KEY automatiskt från Render)
-ai_client = genai.Client()
+# Starta Hugging Face-klienten (hämtar HF_TOKEN automatiskt från miljövariablerna)
+hf_client = InferenceClient(api_key=os.getenv("HF_TOKEN"))
 
 def get_db_connection():
     if not DATABASE_URL:
@@ -106,11 +106,13 @@ def slumpa_recept():
     )
 
     try:
-        response = ai_client.models.generate_content(
-            model='gemini-2.0-flash',
-            contents=prompt,
+        response = hf_client.text_generation(
+            model="Qwen/Qwen2.5-7B-Instruct",
+            prompt=prompt,
+            max_new_tokens=500,
+            temperature=0.7
         )
-        return {"recept": response.text}
+        return {"recept": response}
     except Exception as e:
         return {"recept": f"Kunde inte generera recept just nu. Fel: {str(e)}"}
 
