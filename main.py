@@ -7,7 +7,6 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from huggingface_hub import InferenceClient
 
 app = FastAPI()
 
@@ -20,9 +19,6 @@ app.add_middleware(
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
-# Starta Hugging Face-klienten (hämtar HF_TOKEN automatiskt från miljövariablerna)
-hf_client = InferenceClient(api_key=os.getenv("HF_TOKEN"))
 
 def get_db_connection():
     if not DATABASE_URL:
@@ -85,38 +81,6 @@ def ta_bort_vara(vara_id: int):
     conn.close()
     return {"status": "borttagen", "id": vara_id}
 
-@app.get("/recept")
-def slumpa_recept():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT namn, mangd FROM varor")
-    varor = cursor.fetchall()
-    conn.close()
-    
-    if not varor:
-        return {"recept": "Din frys är helt tom! Lägg till lite varor först så kan jag föreslå ett recept."}
-
-    varu_lista = ", ".join([f"{v['namn']} ({v['mangd']})" for v in varor])
-
-    prompt = (
-        f"Här är en lista på vad jag har i min frys just nu: {varu_lista}. "
-        "Föreslå ett gott och inspirerande middagsrecept baserat huvudsakligen på dessa ingredienser. "
-        "Skriv vad som används från frysen och ge en kort inköpslista på eventuella 1-3 basvaror som behövs till. "
-        "Svara på svenska med tydlig struktur (t.ex. rubriker och punktlistor)."
-    )
-
-    try:
-        response = hf_client.chat_completion(
-            model="mistralai/Mistral-7B-Instruct-v0.2",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
-            temperature=0.7
-        )
-        svar = response.choices[0].message.content
-        return {"recept": svar}
-    except Exception as e:
-        return {"recept": f"Kunde inte generera recept just nu. Fel: {str(e)}"}
-
 @app.get("/", response_class=HTMLResponse)
 def ladda_sida():
     return """
@@ -140,8 +104,8 @@ def ladda_sida():
             --card-bg: #ffffff;
             --primary: #2563eb;
             --primary-hover: #1d4ed8;
-            --ai-btn: #7c3aed;
-            --ai-btn-hover: #6d28d9;
+            --copy-btn: #059669;
+            --copy-btn-hover: #047857;
             --text-main: #0f172a;
             --text-muted: #64748b;
             --border: #e2e8f0;
@@ -243,9 +207,9 @@ def ladda_sida():
         }
         .btn-add:hover { background-color: var(--primary-hover); }
 
-        .btn-ai {
+        .btn-copy {
             width: 100%;
-            background-color: var(--ai-btn);
+            background-color: var(--copy-btn);
             color: white;
             border: none;
             padding: 12px;
@@ -260,18 +224,18 @@ def ladda_sida():
             justify-content: center;
             gap: 8px;
         }
-        .btn-ai:hover { background-color: var(--ai-btn-hover); }
+        .btn-copy:hover { background-color: var(--copy-btn-hover); }
 
-        .ai-result-box {
-            background: #faf5ff;
-            border: 1px solid #e9d5ff;
-            padding: 16px;
+        .copy-result-box {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            padding: 14px;
             border-radius: 14px;
             margin-bottom: 24px;
-            white-space: pre-line;
-            line-height: 1.5;
             font-size: 14px;
-            color: #3b0764;
+            color: #065f46;
+            text-align: center;
+            font-weight: 600;
             display: none;
         }
 
@@ -344,8 +308,8 @@ def ladda_sida():
         <div class="stats-badge"><span id="antal-varor">0</span> i frysen</div>
     </header>
 
-    <button class="btn-ai" onclick="hamtaRecept()">🤖 Föreslå middag med AI</button>
-    <div id="ai-result" class="ai-result-box"></div>
+    <button class="btn-copy" onclick="kopieraInnehall()">📋 Kopiera ditt innehåll till AI</button>
+    <div id="copy-result" class="copy-result-box">Kopierat till urklipp! Klistra nu in i din AI för att få receptförslag.</div>
 
     <div class="card">
         <h2 class="card-title">＋ Lägg till ny vara</h2>
@@ -406,37 +370,27 @@ def ladda_sida():
         return { text: 'Ät snart!', class: 'badge-gammal' };
     }
 
-    async function hamtaRecept() {
-        const box = document.getElementById('ai-result');
-        box.style.display = 'block';
-        box.innerHTML = '🍳 AI funderar ut ett gott recept baserat på din frys...';
-        
-        try {
-            const res = await fetch('/recept');
-            const data = await res.json();
-            box.innerHTML = `<strong>✨ Receptförslag:</strong><br><br>` + data.recept;
-        } catch (err) {
-            box.innerHTML = 'Kunde inte hämta recept just nu. Försök igen!';
-        }
-    }
+    let globalaVaror = [];
 
     async function laddaFrysen() {
         const res = await fetch('/varor');
-        let varor = await res.json();
+        globalaVaror = await res.json();
         
         const sokOrd = document.getElementById('sok').value.toLowerCase();
+        let visadeVaror = globalaVaror;
+
         if (sokOrd) {
-            varor = varor.filter(v => 
+            visadeVaror = globalaVaror.filter(v => 
                 v.namn.toLowerCase().includes(sokOrd) || 
                 v.kategori.toLowerCase().includes(sokOrd)
             );
         }
 
         const lista = document.getElementById('frys-lista');
-        document.getElementById('antal-varor').innerText = varor.length;
+        document.getElementById('antal-varor').innerText = globalaVaror.length;
         lista.innerHTML = '';
 
-        if (varor.length === 0) {
+        if (visadeVaror.length === 0) {
             lista.innerHTML = `
                 <div style="text-align: center; padding: 40px; color: var(--text-muted);">
                     <div style="font-size: 32px; margin-bottom: 8px;">🍦</div>
@@ -446,7 +400,7 @@ def ladda_sida():
             return;
         }
 
-        varor.forEach(v => {
+        visadeVaror.forEach(v => {
             const ikon = ikoner[v.kategori] || '📦';
             const status = beraknaStatus(v.datum);
 
@@ -468,6 +422,30 @@ def ladda_sida():
                 </li>
             `;
         });
+    }
+
+    async function kopieraInnehall() {
+        if (globalaVaror.length === 0) {
+            alert('Din frys är tom! Lägg till lite varor först.');
+            return;
+        }
+
+        let textAttKopiera = "Här är en lista på vad jag har i min frys just nu:\\n";
+        globalaVaror.forEach(v => {
+            textAttKopiera += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\\n`;
+        });
+        textAttKopiera += "\\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
+
+        try {
+            await navigator.clipboard.writeText(textAttKopiera);
+            const box = document.getElementById('copy-result');
+            box.style.display = 'block';
+            setTimeout(() => {
+                box.style.display = 'none';
+            }, 4000);
+        } catch (err) {
+            alert('Kunde inte kopiera automatiskt, men din webbläsare kanske blockerar det.');
+        }
     }
 
     async function laggTillVara() {
