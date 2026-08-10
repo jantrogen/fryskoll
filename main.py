@@ -26,7 +26,6 @@ def get_db_connection():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
-# Skapa databastabell om den inte finns
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -167,6 +166,59 @@ def ladda_sida():
             color: #334155;
         }
 
+        .ai-export-card {
+            background: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            padding: 20px;
+            border-radius: 16px;
+            margin-bottom: 24px;
+        }
+        .ai-export-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #065f46;
+            margin: 0 0 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .ai-textarea {
+            width: 100%;
+            height: 110px;
+            padding: 12px;
+            border: 1px solid #6ee7b7;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 14px;
+            background: #ffffff;
+            color: #064e3b;
+            resize: none;
+            margin-bottom: 12px;
+        }
+        .ai-textarea:focus {
+            outline: none;
+            border-color: #059669;
+            box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
+        }
+
+        .btn-copy {
+            width: 100%;
+            background-color: var(--copy-btn);
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .btn-copy:hover { background-color: var(--copy-btn-hover); }
+
         .form-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -206,38 +258,6 @@ def ladda_sida():
             transition: background 0.2s;
         }
         .btn-add:hover { background-color: var(--primary-hover); }
-
-        .btn-copy {
-            width: 100%;
-            background-color: var(--copy-btn);
-            color: white;
-            border: none;
-            padding: 12px;
-            font-size: 15px;
-            font-weight: 600;
-            border-radius: 10px;
-            cursor: pointer;
-            margin-bottom: 24px;
-            transition: background 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .btn-copy:hover { background-color: var(--copy-btn-hover); }
-
-        .copy-result-box {
-            background: #ecfdf5;
-            border: 1px solid #a7f3d0;
-            padding: 14px;
-            border-radius: 14px;
-            margin-bottom: 24px;
-            font-size: 14px;
-            color: #065f46;
-            text-align: center;
-            font-weight: 600;
-            display: none;
-        }
 
         .search-bar {
             margin-bottom: 16px;
@@ -308,8 +328,11 @@ def ladda_sida():
         <div class="stats-badge"><span id="antal-varor">0</span> i frysen</div>
     </header>
 
-    <button class="btn-copy" onclick="kopieraInnehall()">📋 Kopiera ditt innehåll till AI</button>
-    <div id="copy-result" class="copy-result-box">Kopierat till urklipp! Klistra nu in i din AI för att få receptförslag.</div>
+    <div class="ai-export-card">
+        <div class="ai-export-title">📋 AI-underlag (Klar att kopiera)</div>
+        <textarea id="ai-text-box" class="ai-textarea" readonly></textarea>
+        <button class="btn-copy" onclick="kopieraInnehall()">Kopiera texten till urklipp</button>
+    </div>
 
     <div class="card">
         <h2 class="card-title">＋ Lägg till ny vara</h2>
@@ -372,10 +395,27 @@ def ladda_sida():
 
     let globalaVaror = [];
 
+    function uppdateraAiTextruta(varor) {
+        const textBox = document.getElementById('ai-text-box');
+        if (varor.length === 0) {
+            textBox.value = "Din frys är tom! Lägg till lite varor för att skapa ett AI-underlag.";
+            return;
+        }
+
+        let text = "Här är en lista på vad jag har i min frys just nu:\n";
+        varor.forEach(v => {
+            text += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\n`;
+        });
+        text += "\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
+        textBox.value = text;
+    }
+
     async function laddaFrysen() {
         const res = await fetch('/varor');
         globalaVaror = await res.json();
         
+        uppdateraAiTextruta(globalaVaror);
+
         const sokOrd = document.getElementById('sok').value.toLowerCase();
         let visadeVaror = globalaVaror;
 
@@ -425,26 +465,24 @@ def ladda_sida():
     }
 
     async function kopieraInnehall() {
+        const textBox = document.getElementById('ai-text-box');
         if (globalaVaror.length === 0) {
-            alert('Din frys är tom! Lägg till lite varor först.');
+            alert('Din frys är tom!');
             return;
         }
 
-        let textAttKopiera = "Här är en lista på vad jag har i min frys just nu:\\n";
-        globalaVaror.forEach(v => {
-            textAttKopiera += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\\n`;
-        });
-        textAttKopiera += "\\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
-
         try {
-            await navigator.clipboard.writeText(textAttKopiera);
-            const box = document.getElementById('copy-result');
-            box.style.display = 'block';
+            await navigator.clipboard.writeText(textBox.value);
+            const btn = document.querySelector('.btn-copy');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '✨ Kopierat till urklipp!';
+            btn.style.backgroundColor = '#047857';
             setTimeout(() => {
-                box.style.display = 'none';
-            }, 4000);
+                btn.innerHTML = originalText;
+                btn.style.backgroundColor = '';
+            }, 2500);
         } catch (err) {
-            alert('Kunde inte kopiera automatiskt, men din webbläsare kanske blockerar det.');
+            alert('Kunde inte kopiera automatiskt.');
         }
     }
 
