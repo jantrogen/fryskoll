@@ -107,7 +107,7 @@ def slumpa_recept():
 
     try:
         response = hf_client.text_generation(
-            model="Qwen/Qwen2.5-7B-Instruct",
+            model="google/gemma-2-2b-it",
             prompt=prompt,
             max_new_tokens=500,
             temperature=0.7
