@@ -106,8 +106,8 @@ def slumpa_recept():
     )
 
     try:
+        # Inget modellnamn angivet -> Hugging Face väljer sin aktiva standardmodell
         response = hf_client.chat_completion(
-            model="HuggingFaceH4/zephyr-7b-beta",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=500,
             temperature=0.7
