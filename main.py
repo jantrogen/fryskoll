@@ -194,6 +194,7 @@ def ladda_sida():
             color: #064e3b;
             resize: none;
             margin-bottom: 12px;
+            display: none; /* Dold som standard */
         }
         .ai-textarea:focus {
             outline: none;
@@ -329,9 +330,9 @@ def ladda_sida():
     </header>
 
     <div class="ai-export-card">
-        <div class="ai-export-title">📋 AI-underlag (Klar att kopiera)</div>
+        <div class="ai-export-title">📋 AI-underlag</div>
         <textarea id="ai-text-box" class="ai-textarea" readonly></textarea>
-        <button class="btn-copy" onclick="kopieraInnehall()">Kopiera texten till urklipp</button>
+        <button class="btn-copy" onclick="kopieraInnehall()">Kopiera innehåll till AI</button>
     </div>
 
     <div class="card">
@@ -395,27 +396,10 @@ def ladda_sida():
 
     let globalaVaror = [];
 
-    function uppdateraAiTextruta(varor) {
-        const textBox = document.getElementById('ai-text-box');
-        if (varor.length === 0) {
-            textBox.value = "Din frys är tom! Lägg till lite varor för att skapa ett AI-underlag.";
-            return;
-        }
-
-        let text = "Här är en lista på vad jag har i min frys just nu:\\n";
-        varor.forEach(v => {
-            text += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\\n`;
-        });
-        text += "\\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
-        textBox.value = text;
-    }
-
     async function laddaFrysen() {
         const res = await fetch('/varor');
         globalaVaror = await res.json();
         
-        uppdateraAiTextruta(globalaVaror);
-
         const sokOrd = document.getElementById('sok').value.toLowerCase();
         let visadeVaror = globalaVaror;
 
@@ -465,14 +449,23 @@ def ladda_sida():
     }
 
     async function kopieraInnehall() {
-        const textBox = document.getElementById('ai-text-box');
         if (globalaVaror.length === 0) {
             alert('Din frys är tom!');
             return;
         }
 
+        let text = "Här är en lista på vad jag har i min frys just nu:\\n";
+        globalaVaror.forEach(v => {
+            text += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\\n`;
+        });
+        text += "\\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
+
+        const textBox = document.getElementById('ai-text-box');
+        textBox.value = text;
+        textBox.style.display = 'block'; // Fäll ut textrutan
+
         try {
-            await navigator.clipboard.writeText(textBox.value);
+            await navigator.clipboard.writeText(text);
             const btn = document.querySelector('.btn-copy');
             const originalText = btn.innerHTML;
             btn.innerHTML = '✨ Kopierat till urklipp!';
