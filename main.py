@@ -402,11 +402,11 @@ def ladda_sida():
             return;
         }
 
-        let text = "Här är en lista på vad jag har i min frys just nu:\n";
+        let text = "Här är en lista på vad jag har i min frys just nu:\\n";
         varor.forEach(v => {
-            text += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\n`;
+            text += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\\n`;
         });
-        text += "\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
+        text += "\\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
         textBox.value = text;
     }
 
@@ -505,6 +505,7 @@ def ladda_sida():
 
         document.getElementById('namn').value = '';
         document.getElementById('mangd').value = '';
+        document.getElementById('datum').valueAsDate = new Date();
         laddaFrysen();
     }
 
