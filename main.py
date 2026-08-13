@@ -100,7 +100,7 @@ def ladda_sida():
         .item-main { display: flex; align-items: center; gap: 12px; }
         .icon-box { width: 40px; height: 40px; background: #f1f5f9; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
         .btn-edit { background: #f1f5f9; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
-        .ai-textarea { width: 100%; height: 100px; margin-bottom: 10px; display: none; padding: 10px; border: 1px solid #059669; border-radius: 8px; }
+        .ai-textarea { width: 100%; height: 120px; margin-bottom: 10px; display: none; padding: 10px; border: 1px solid #059669; border-radius: 8px; font-family: inherit; font-size: 13px; }
         .btn-copy { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: 600; }
         input, select { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; }
     </style>
@@ -212,7 +212,10 @@ def ladda_sida():
     }
 
     async function kopieraInnehall() {
-        let text = "Mina varor i frysen:\\n" + globalaVaror.map(v => `- ${v.namn}: ${v.mangd} (${v.kategori})`).join("\\n");
+        let text = "Mina varor i frysen:\\n" + 
+                   globalaVaror.map(v => `- ${v.namn}: ${v.mangd} (${v.kategori})`).join("\\n") + 
+                   "\\n\\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
+        
         const box = document.getElementById('ai-text-box');
         box.value = text;
         box.style.display = 'block';
