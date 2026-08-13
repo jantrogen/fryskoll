@@ -74,7 +74,6 @@ def lagg_till_vara(vara: NyVara):
 def uppdatera_vara(vara_id: int, data: dict):
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Om ny mängd är tom eller 0, radera, annars uppdatera
     if not data.get("mangd") or data["mangd"] == "0":
         cursor.execute("DELETE FROM varor WHERE id = %s", (vara_id,))
     else:
@@ -98,24 +97,37 @@ def ladda_sida():
         body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); padding: 20px; color: var(--text); }
         .app-container { max-width: 600px; margin: 0 auto; }
         .item-card { background: #fff; padding: 16px; border-radius: 12px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .item-main { display: flex; align-items: center; gap: 12px; }
+        .icon-box { width: 40px; height: 40px; background: #f1f5f9; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
         .btn-edit { background: #f1f5f9; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
         .ai-textarea { width: 100%; height: 100px; margin-bottom: 10px; display: none; padding: 10px; border: 1px solid #059669; border-radius: 8px; }
-        .btn-copy { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; }
+        .btn-copy { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+        input, select { width: 100%; padding: 10px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 8px; font-family: inherit; }
     </style>
 </head>
 <body>
 <div class="app-container">
-    <h1>❄️ Fryskoll</h1>
-    <div style="background: #ecfdf5; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+    <h1 style="margin-bottom: 20px;">❄️ Fryskoll</h1>
+    
+    <div style="background: #ecfdf5; padding: 15px; border-radius: 12px; border: 1px solid #a7f3d0; margin-bottom: 20px;">
         <textarea id="ai-text-box" class="ai-textarea" readonly></textarea>
         <button class="btn-copy" onclick="kopieraInnehall()">Kopiera innehåll till AI</button>
     </div>
     
-    <div style="background:#fff; padding:20px; border-radius:12px; margin-bottom:20px;">
-        <input type="text" id="namn" placeholder="Vara..." style="width:100%; padding:8px; margin-bottom:5px;">
-        <input type="text" id="mangd" placeholder="Mängd..." style="width:100%; padding:8px; margin-bottom:5px;">
-        <input type="date" id="datum" style="width:100%; padding:8px;">
-        <button onclick="laggTillVara()" style="width:100%; padding:10px; margin-top:10px; background:var(--primary); color:white; border:none; border-radius:8px;">Spara</button>
+    <div style="background:#fff; padding:20px; border-radius:12px; border: 1px solid var(--border); margin-bottom:20px;">
+        <h3 style="margin-top:0; margin-bottom: 12px;">+ Lägg till ny vara</h3>
+        <input type="text" id="namn" placeholder="Vara (t.ex. Kyckling)...">
+        <select id="kategori">
+            <option value="Kött">🥩 Kött</option>
+            <option value="Fisk">🐟 Fisk & Skaldjur</option>
+            <option value="Grönsaker">🥦 Grönsaker & Bär</option>
+            <option value="Färdigmat">🍲 Färdigmat / Lådor</option>
+            <option value="Bröd">🍞 Bröd & Bakat</option>
+            <option value="Övrigt">📦 Övrigt</option>
+        </select>
+        <input type="text" id="mangd" placeholder="Mängd / Vikt (t.ex. 500g)...">
+        <input type="date" id="datum">
+        <button onclick="laggTillVara()" style="width:100%; padding:12px; margin-top:5px; background:var(--primary); color:white; border:none; border-radius:8px; font-weight:600; cursor:pointer;">Spara i frysen</button>
     </div>
 
     <ul id="frys-lista" style="list-style:none; padding:0;"></ul>
@@ -125,15 +137,37 @@ def ladda_sida():
     document.getElementById('datum').valueAsDate = new Date();
     let globalaVaror = [];
 
+    const ikoner = {
+        'Kött': '🥩',
+        'Fisk': '🐟',
+        'Grönsaker': '🥦',
+        'Färdigmat': '🍲',
+        'Bröd': '🍞',
+        'Övrigt': '📦'
+    };
+
     async function laddaFrysen() {
         const res = await fetch('/varor');
         globalaVaror = await res.json();
         const lista = document.getElementById('frys-lista');
         lista.innerHTML = '';
+        
+        if (globalaVaror.length === 0) {
+            lista.innerHTML = '<div style="text-align:center; color:#64748b; padding:20px;">Frysen är tom!</div>';
+            return;
+        }
+
         globalaVaror.forEach(v => {
+            const ikon = ikoner[v.kategori] || '📦';
             lista.innerHTML += `
                 <li class="item-card">
-                    <div><strong>${v.namn}</strong><br><small>${v.mangd} • ${v.datum}</small></div>
+                    <div class="item-main">
+                        <div class="icon-box">${ikon}</div>
+                        <div>
+                            <strong>${v.namn}</strong><br>
+                            <small style="color:#64748b;">${v.mangd} • ${v.datum}</small>
+                        </div>
+                    </div>
                     <button class="btn-edit" onclick="redigeraVara(${v.id}, '${v.mangd}')">Ändra mängd</button>
                 </li>
             `;
@@ -155,25 +189,35 @@ def ladda_sida():
     async function laggTillVara() {
         const data = {
             namn: document.getElementById('namn').value,
-            kategori: 'Övrigt',
+            kategori: document.getElementById('kategori').value,
             mangd: document.getElementById('mangd').value,
             datum: document.getElementById('datum').value
         };
+
+        if (!data.namn || !data.mangd) {
+            alert('Fyll i både vara och mängd!');
+            return;
+        }
+
         await fetch('/varor', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
+
+        document.getElementById('namn').value = '';
+        document.getElementById('mangd').value = '';
+        document.getElementById('datum').valueAsDate = new Date();
         laddaFrysen();
     }
 
     async function kopieraInnehall() {
-        let text = "Mina varor i frysen:\\n" + globalaVaror.map(v => `- ${v.namn}: ${v.mangd}`).join("\\n");
+        let text = "Mina varor i frysen:\\n" + globalaVaror.map(v => `- ${v.namn}: ${v.mangd} (${v.kategori})`).join("\\n");
         const box = document.getElementById('ai-text-box');
         box.value = text;
         box.style.display = 'block';
         await navigator.clipboard.writeText(text);
-        alert('Kopierat!');
+        alert('Kopierat till urklipp!');
     }
 
     laddaFrysen();
