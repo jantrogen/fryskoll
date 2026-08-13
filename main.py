@@ -1,7 +1,6 @@
 import os
 from datetime import date
-from typing import List
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -22,7 +21,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 def get_db_connection():
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL saknas! Appen är inte kopplad till PostgreSQL.")
+        raise RuntimeError("DATABASE_URL saknas!")
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
@@ -71,14 +70,18 @@ def lagg_till_vara(vara: NyVara):
     conn.close()
     return {"status": "ok", "id": nytt_id}
 
-@app.delete("/varor/{vara_id}")
-def ta_bort_vara(vara_id: int):
+@app.put("/varor/{vara_id}")
+def uppdatera_vara(vara_id: int, data: dict):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM varor WHERE id = %s", (vara_id,))
+    # Om ny mängd är tom eller 0, radera, annars uppdatera
+    if not data.get("mangd") or data["mangd"] == "0":
+        cursor.execute("DELETE FROM varor WHERE id = %s", (vara_id,))
+    else:
+        cursor.execute("UPDATE varor SET mangd = %s WHERE id = %s", (data["mangd"], vara_id))
     conn.commit()
     conn.close()
-    return {"status": "borttagen", "id": vara_id}
+    return {"status": "uppdaterad"}
 
 @app.get("/", response_class=HTMLResponse)
 def ladda_sida():
@@ -87,429 +90,94 @@ def ladda_sida():
 <html lang="sv">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Fryskoll">
-    <link rel="apple-touch-icon" href="https://fav.farm/❄️">
-    <link rel="icon" href="https://fav.farm/❄️">
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>❄️ Fryskoll</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg: #f8fafc;
-            --card-bg: #ffffff;
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
-            --copy-btn: #059669;
-            --copy-btn-hover: #047857;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --border: #e2e8f0;
-            --danger-bg: #fef2f2;
-            --danger-text: #ef4444;
-        }
-
-        * { box-sizing: border-box; }
-        body { 
-            font-family: 'Plus Jakarta Sans', sans-serif; 
-            background-color: var(--bg); 
-            margin: 0; 
-            padding: 24px 16px; 
-            color: var(--text-main); 
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        .app-container { 
-            max-width: 650px; 
-            margin: 0 auto; 
-        }
-
-        header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 24px;
-        }
-        h1 { 
-            font-size: 26px; 
-            font-weight: 700; 
-            margin: 0; 
-            display: flex; 
-            align-items: center; 
-            gap: 10px; 
-            color: #1e293b;
-        }
-        .stats-badge {
-            background: #dbeafe;
-            color: #1e40af;
-            font-weight: 700;
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 14px;
-        }
-
-        .card { 
-            background: var(--card-bg); 
-            padding: 20px; 
-            border-radius: 16px; 
-            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -2px rgba(0,0,0,0.05); 
-            border: 1px solid var(--border);
-            margin-bottom: 24px; 
-        }
-        .card-title {
-            font-size: 16px;
-            font-weight: 600;
-            margin: 0 0 16px 0;
-            color: #334155;
-        }
-
-        .ai-export-card {
-            background: #ecfdf5;
-            border: 1px solid #a7f3d0;
-            padding: 20px;
-            border-radius: 16px;
-            margin-bottom: 24px;
-        }
-        .ai-export-title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #065f46;
-            margin: 0 0 10px 0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .ai-textarea {
-            width: 100%;
-            height: 110px;
-            padding: 12px;
-            border: 1px solid #6ee7b7;
-            border-radius: 10px;
-            font-family: inherit;
-            font-size: 14px;
-            background: #ffffff;
-            color: #064e3b;
-            resize: none;
-            margin-bottom: 12px;
-            display: none; /* Dold som standard */
-        }
-        .ai-textarea:focus {
-            outline: none;
-            border-color: #059669;
-            box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.15);
-        }
-
-        .btn-copy {
-            width: 100%;
-            background-color: var(--copy-btn);
-            color: white;
-            border: none;
-            padding: 12px;
-            font-size: 15px;
-            font-weight: 600;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: background 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        .btn-copy:hover { background-color: var(--copy-btn-hover); }
-
-        .form-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 12px;
-        }
-        .form-full { grid-column: span 2; }
-
-        label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: var(--text-muted); }
-        input, select { 
-            width: 100%; 
-            padding: 10px 14px; 
-            border: 1px solid var(--border); 
-            border-radius: 10px; 
-            font-size: 15px; 
-            font-family: inherit;
-            background: #f8fafc;
-            transition: all 0.2s;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: var(--primary);
-            background: #fff;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
-        }
-
-        .btn-add { 
-            width: 100%; 
-            background-color: var(--primary); 
-            color: white; 
-            border: none; 
-            padding: 12px; 
-            font-size: 15px; 
-            font-weight: 600; 
-            border-radius: 10px; 
-            cursor: pointer; 
-            margin-top: 16px; 
-            transition: background 0.2s;
-        }
-        .btn-add:hover { background-color: var(--primary-hover); }
-
-        .search-bar {
-            margin-bottom: 16px;
-        }
-
-        .item-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
-        .item-card { 
-            background: var(--card-bg); 
-            border: 1px solid var(--border); 
-            padding: 16px; 
-            border-radius: 14px; 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            transition: transform 0.1s, box-shadow 0.1s;
-        }
-
-        .item-main { display: flex; align-items: center; gap: 14px; }
-        .icon-box {
-            width: 44px;
-            height: 44px;
-            background: #f1f5f9;
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            flex-shrink: 0;
-        }
-
-        .item-title { font-weight: 600; font-size: 16px; color: var(--text-main); margin-bottom: 2px; }
-        .item-meta { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
-        
-        .badge {
-            font-size: 11px;
-            font-weight: 600;
-            padding: 2px 8px;
-            border-radius: 6px;
-        }
-        .badge-farsk { background: #dcfce7; color: #15803d; }
-        .badge-ok { background: #fef9c3; color: #a16207; }
-        .badge-gammal { background: #fee2e2; color: #b91c1c; }
-
-        .btn-delete { 
-            background-color: var(--danger-bg); 
-            color: var(--danger-text); 
-            border: 1px solid #fca5a5; 
-            padding: 8px 12px; 
-            border-radius: 8px; 
-            font-weight: 600; 
-            cursor: pointer; 
-            font-size: 13px; 
-            transition: all 0.2s;
-            flex-shrink: 0;
-        }
-
-        @media (max-width: 480px) {
-            .form-grid { grid-template-columns: 1fr; }
-            .form-full { grid-column: span 1; }
-        }
+        :root { --bg: #f8fafc; --primary: #2563eb; --text: #0f172a; --border: #e2e8f0; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: var(--bg); padding: 20px; color: var(--text); }
+        .app-container { max-width: 600px; margin: 0 auto; }
+        .item-card { background: #fff; padding: 16px; border-radius: 12px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .btn-edit { background: #f1f5f9; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+        .ai-textarea { width: 100%; height: 100px; margin-bottom: 10px; display: none; padding: 10px; border: 1px solid #059669; border-radius: 8px; }
+        .btn-copy { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; }
     </style>
 </head>
 <body>
-
 <div class="app-container">
-    <header>
-        <h1>❄️ Fryskoll</h1>
-        <div class="stats-badge"><span id="antal-varor">0</span> i frysen</div>
-    </header>
-
-    <div class="ai-export-card">
-        <div class="ai-export-title">📋 AI-underlag</div>
+    <h1>❄️ Fryskoll</h1>
+    <div style="background: #ecfdf5; padding: 15px; border-radius: 12px; margin-bottom: 20px;">
         <textarea id="ai-text-box" class="ai-textarea" readonly></textarea>
         <button class="btn-copy" onclick="kopieraInnehall()">Kopiera innehåll till AI</button>
     </div>
-
-    <div class="card">
-        <h2 class="card-title">＋ Lägg till ny vara</h2>
-        <div class="form-grid">
-            <div class="form-full">
-                <label>VARA</label>
-                <input type="text" id="namn" placeholder="t.ex. Kycklingfilé, Ärtor...">
-            </div>
-            <div>
-                <label>KATEGORI</label>
-                <select id="kategori">
-                    <option value="Kött">🥩 Kött</option>
-                    <option value="Fisk">🐟 Fisk & Skaldjur</option>
-                    <option value="Grönsaker">🥦 Grönsaker & Bär</option>
-                    <option value="Färdigmat">🍲 Färdigmat / Lådor</option>
-                    <option value="Bröd">🍞 Bröd & Bakat</option>
-                    <option value="Övrigt">📦 Övrigt</option>
-                </select>
-            </div>
-            <div>
-                <label>MÄNGD / VIKT</label>
-                <input type="text" id="mangd" placeholder="t.ex. 500g, 2 st">
-            </div>
-            <div class="form-full">
-                <label>INFRYSNINGSDATUM</label>
-                <input type="date" id="datum">
-            </div>
-        </div>
-        <button class="btn-add" onclick="laggTillVara()">Spara i frysen</button>
+    
+    <div style="background:#fff; padding:20px; border-radius:12px; margin-bottom:20px;">
+        <input type="text" id="namn" placeholder="Vara..." style="width:100%; padding:8px; margin-bottom:5px;">
+        <input type="text" id="mangd" placeholder="Mängd..." style="width:100%; padding:8px; margin-bottom:5px;">
+        <input type="date" id="datum" style="width:100%; padding:8px;">
+        <button onclick="laggTillVara()" style="width:100%; padding:10px; margin-top:10px; background:var(--primary); color:white; border:none; border-radius:8px;">Spara</button>
     </div>
 
-    <div class="search-bar">
-        <input type="text" id="sok" placeholder="🔍 Sök i frysen..." oninput="laddaFrysen()">
-    </div>
-
-    <ul class="item-list" id="frys-lista"></ul>
+    <ul id="frys-lista" style="list-style:none; padding:0;"></ul>
 </div>
 
 <script>
     document.getElementById('datum').valueAsDate = new Date();
-
-    const ikoner = {
-        'Kött': '🥩',
-        'Fisk': '🐟',
-        'Grönsaker': '🥦',
-        'Färdigmat': '🍲',
-        'Bröd': '🍞',
-        'Övrigt': '📦'
-    };
-
-    function beraknaStatus(datumStr) {
-        const frysDatum = new Date(datumStr);
-        const idag = new Date();
-        const diffMader = (idag - frysDatum) / (1000 * 60 * 60 * 24 * 30);
-
-        if (diffMader < 2) return { text: 'Nyligen infryst', class: 'badge-farsk' };
-        if (diffMader < 6) return { text: 'Okej ålder', class: 'badge-ok' };
-        return { text: 'Ät snart!', class: 'badge-gammal' };
-    }
-
     let globalaVaror = [];
 
     async function laddaFrysen() {
         const res = await fetch('/varor');
         globalaVaror = await res.json();
-        
-        const sokOrd = document.getElementById('sok').value.toLowerCase();
-        let visadeVaror = globalaVaror;
-
-        if (sokOrd) {
-            visadeVaror = globalaVaror.filter(v => 
-                v.namn.toLowerCase().includes(sokOrd) || 
-                v.kategori.toLowerCase().includes(sokOrd)
-            );
-        }
-
         const lista = document.getElementById('frys-lista');
-        document.getElementById('antal-varor').innerText = globalaVaror.length;
         lista.innerHTML = '';
-
-        if (visadeVaror.length === 0) {
-            lista.innerHTML = `
-                <div style="text-align: center; padding: 40px; color: var(--text-muted);">
-                    <div style="font-size: 32px; margin-bottom: 8px;">🍦</div>
-                    Inga varor hittades i frysen.
-                </div>
-            `;
-            return;
-        }
-
-        visadeVaror.forEach(v => {
-            const ikon = ikoner[v.kategori] || '📦';
-            const status = beraknaStatus(v.datum);
-
+        globalaVaror.forEach(v => {
             lista.innerHTML += `
                 <li class="item-card">
-                    <div class="item-main">
-                        <div class="icon-box">${ikon}</div>
-                        <div>
-                            <div class="item-title">${v.namn}</div>
-                            <div class="item-meta">
-                                <span>📦 ${v.mangd}</span>
-                                <span>•</span>
-                                <span>📅 ${v.datum}</span>
-                                <span class="badge ${status.class}">${status.text}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <button class="btn-delete" onclick="taBortVara(${v.id})">Ätit upp</button>
+                    <div><strong>${v.namn}</strong><br><small>${v.mangd} • ${v.datum}</small></div>
+                    <button class="btn-edit" onclick="redigeraVara(${v.id}, '${v.mangd}')">Ändra mängd</button>
                 </li>
             `;
         });
     }
 
-    async function kopieraInnehall() {
-        if (globalaVaror.length === 0) {
-            alert('Din frys är tom!');
-            return;
-        }
-
-        let text = "Här är en lista på vad jag har i min frys just nu:\\n";
-        globalaVaror.forEach(v => {
-            text += `- ${v.namn}: ${v.mangd} (kategori: ${v.kategori}, infryst: ${v.datum})\\n`;
-        });
-        text += "\\nFöreslå ett gott middagsrecept baserat huvudsakligen på dessa ingredienser!";
-
-        const textBox = document.getElementById('ai-text-box');
-        textBox.value = text;
-        textBox.style.display = 'block'; // Fäll ut textrutan
-
-        try {
-            await navigator.clipboard.writeText(text);
-            const btn = document.querySelector('.btn-copy');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '✨ Kopierat till urklipp!';
-            btn.style.backgroundColor = '#047857';
-            setTimeout(() => {
-                btn.innerHTML = originalText;
-                btn.style.backgroundColor = '';
-            }, 2500);
-        } catch (err) {
-            alert('Kunde inte kopiera automatiskt.');
+    async function redigeraVara(id, gammalMangd) {
+        const nyMangd = prompt("Hur mycket finns kvar? (Skriv 0 för att ta bort)", gammalMangd);
+        if (nyMangd !== null) {
+            await fetch(`/varor/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mangd: nyMangd })
+            });
+            laddaFrysen();
         }
     }
 
     async function laggTillVara() {
-        const namn = document.getElementById('namn').value;
-        const kategori = document.getElementById('kategori').value;
-        const mangd = document.getElementById('mangd').value;
-        const datum = document.getElementById('datum').value;
-
-        if (!namn || !mangd || !datum) {
-            alert('Fyll i alla fält!');
-            return;
-        }
-
+        const data = {
+            namn: document.getElementById('namn').value,
+            kategori: 'Övrigt',
+            mangd: document.getElementById('mangd').value,
+            datum: document.getElementById('datum').value
+        };
         await fetch('/varor', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ namn, kategori, mangd, datum })
+            body: JSON.stringify(data)
         });
-
-        document.getElementById('namn').value = '';
-        document.getElementById('mangd').value = '';
-        document.getElementById('datum').valueAsDate = new Date();
         laddaFrysen();
     }
 
-    async function taBortVara(id) {
-        await fetch(`/varor/${id}`, { method: 'DELETE' });
-        laddaFrysen();
+    async function kopieraInnehall() {
+        let text = "Mina varor i frysen:\\n" + globalaVaror.map(v => `- ${v.namn}: ${v.mangd}`).join("\\n");
+        const box = document.getElementById('ai-text-box');
+        box.value = text;
+        box.style.display = 'block';
+        await navigator.clipboard.writeText(text);
+        alert('Kopierat!');
     }
 
     laddaFrysen();
 </script>
-
 </body>
 </html>
-    """
+"""
